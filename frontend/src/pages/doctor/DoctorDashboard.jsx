@@ -9,7 +9,11 @@ import {
   Bell,
   LogOut,
 } from "lucide-react";
+import { io } from "socket.io-client";
 import "./DoctorDashboard.css";
+
+/* 🔔 SOCKET CONNECTION */
+const socket = io("http://localhost:5000");
 
 function DoctorDashboard({ onLogout }) {
   const [todayAppointments, setTodayAppointments] = useState([]);
@@ -19,49 +23,71 @@ function DoctorDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState("today");
   const [selectedAppointment, setSelectedAppointment] = useState(null);
 
+  /* 🔐 LOGGED-IN DOCTOR + TOKEN */
+  const doctor = JSON.parse(localStorage.getItem("doctor"));
+  const token = localStorage.getItem("token");
+
   useEffect(() => {
     fetchAppointments();
-    const interval = setInterval(fetchAppointments, 30000);
-    return () => clearInterval(interval);
+
+    /* 🔔 JOIN DOCTOR SOCKET ROOM */
+    socket.emit("join-doctor", doctor.email);
+
+    /* 🔔 LISTEN FOR NEW APPOINTMENT */
+    socket.on("new-appointment", () => {
+      fetchAppointments();
+    });
+
+    return () => {
+      socket.off("new-appointment");
+    };
   }, []);
 
+  /* 👨‍⚕️ FETCH DOCTOR-ONLY APPOINTMENTS */
   const fetchAppointments = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/appointments");
-      const data = await res.json();
+      const res = await fetch(
+        "http://localhost:5000/api/doctor/appointments",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-      if (!res.ok) throw new Error("Failed to fetch appointments");
+      const data = await res.json();
+      if (!res.ok) throw new Error("Failed to fetch");
 
       const today = new Date().toISOString().split("T")[0];
 
-      const todayApts = data.filter((apt) => apt.appointment_date === today);
-      const pending = data.filter((apt) => apt.status === "pending");
-      const approved = data.filter((apt) => apt.status === "confirmed");
-
-      setTodayAppointments(todayApts);
-      setPendingRequests(pending);
-      setApprovedAppointments(approved);
+      setTodayAppointments(
+        data.filter((apt) => apt.appointment_date === today)
+      );
+      setPendingRequests(data.filter((apt) => apt.status === "pending"));
+      setApprovedAppointments(data.filter((apt) => apt.status === "confirmed"));
     } catch (error) {
-      console.error("Error fetching appointments:", error);
+      console.error("Fetch error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // STEP 4: Update appointment status (Approve / Reject)
+  /* ✅ UPDATE STATUS */
   const updateStatus = async (id, status) => {
     try {
-      await fetch(`http://localhost:5000/api/appointments/${id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      fetchAppointments(); // refresh list
-      setSelectedAppointment(null); // close modal
-    } catch (error) {
-      console.error("Status update failed:", error);
-      alert("Failed to update appointment");
+      await fetch(
+        `http://localhost:5000/api/appointments/${id}/status`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        }
+      );
+      fetchAppointments();
+      setSelectedAppointment(null);
+    } catch {
+      alert("Failed to update status");
     }
   };
 
@@ -120,37 +146,26 @@ function DoctorDashboard({ onLogout }) {
               </div>
             </div>
 
-            {showActions && (
+            {showActions && apt.status === "pending" && (
               <div className="apt-actions">
-                {apt.status === "pending" && (
-                  <>
-                    <button
-                      className="btn-approve"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateStatus(apt._id, "confirmed");
-                      }}
-                    >
-                      Approve
-                    </button>
-
-                    <button
-                      className="btn-reject"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateStatus(apt._id, "cancelled");
-                      }}
-                    >
-                      Reject
-                    </button>
-                  </>
-                )}
-                {apt.status === "confirmed" && (
-                  <>
-                    <button className="btn-video">Join Call</button>
-                    <button className="btn-manage">Manage</button>
-                  </>
-                )}
+                <button
+                  className="btn-approve"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateStatus(apt._id, "confirmed");
+                  }}
+                >
+                  Approve
+                </button>
+                <button
+                  className="btn-reject"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateStatus(apt._id, "cancelled");
+                  }}
+                >
+                  Reject
+                </button>
               </div>
             )}
           </div>
@@ -170,7 +185,13 @@ function DoctorDashboard({ onLogout }) {
               <p>Manage your appointments and consultations</p>
             </div>
           </div>
-          <button onClick={onLogout} className="btn-logout">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              onLogout();
+            }}
+            className="btn-logout"
+          >
             <LogOut size={20} />
             Logout
           </button>
@@ -186,43 +207,20 @@ function DoctorDashboard({ onLogout }) {
 
       <div className="stats-section">
         <div className="stat-card stat-total">
-          <div className="stat-icon">
-            <Users size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Total</span>
-            <span className="stat-number">{stats.total}</span>
-          </div>
+          <Users size={24} />
+          <span>{stats.total}</span>
         </div>
-
         <div className="stat-card stat-today">
-          <div className="stat-icon">
-            <Calendar size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Today</span>
-            <span className="stat-number">{stats.today}</span>
-          </div>
+          <Calendar size={24} />
+          <span>{stats.today}</span>
         </div>
-
         <div className="stat-card stat-pending">
-          <div className="stat-icon">
-            <AlertCircle size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Pending</span>
-            <span className="stat-number">{stats.pending}</span>
-          </div>
+          <AlertCircle size={24} />
+          <span>{stats.pending}</span>
         </div>
-
         <div className="stat-card stat-approved">
-          <div className="stat-icon">
-            <CheckCircle size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Confirmed</span>
-            <span className="stat-number">{stats.approved}</span>
-          </div>
+          <CheckCircle size={24} />
+          <span>{stats.approved}</span>
         </div>
       </div>
 
@@ -232,22 +230,19 @@ function DoctorDashboard({ onLogout }) {
             className={`tab ${activeTab === "today" ? "active" : ""}`}
             onClick={() => setActiveTab("today")}
           >
-            <Calendar size={18} />
-            Today's Appointments
+            Today
           </button>
           <button
             className={`tab ${activeTab === "pending" ? "active" : ""}`}
             onClick={() => setActiveTab("pending")}
           >
-            <AlertCircle size={18} />
-            Pending Requests
+            Pending
           </button>
           <button
             className={`tab ${activeTab === "approved" ? "active" : ""}`}
             onClick={() => setActiveTab("approved")}
           >
-            <CheckCircle size={18} />
-            Confirmed Appointments
+            Confirmed
           </button>
         </div>
 
@@ -255,7 +250,7 @@ function DoctorDashboard({ onLogout }) {
           {loading ? (
             <div className="loading">
               <div className="spinner"></div>
-              <p>Loading appointments...</p>
+              <p>Loading...</p>
             </div>
           ) : (
             <>
@@ -264,136 +259,10 @@ function DoctorDashboard({ onLogout }) {
               {activeTab === "pending" &&
                 renderAppointmentList(pendingRequests, true)}
               {activeTab === "approved" &&
-                renderAppointmentList(approvedAppointments, true)}
+                renderAppointmentList(approvedAppointments)}
             </>
           )}
         </div>
-      </div>
-
-      {selectedAppointment && (
-        <div
-          className="modal-overlay"
-          onClick={() => setSelectedAppointment(null)}
-        >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Appointment Details</h2>
-              <button
-                className="close-btn"
-                onClick={() => setSelectedAppointment(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="detail-section">
-                <h3>Patient Information</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <span className="label">Name</span>
-                    <span className="value">
-                      {selectedAppointment.patient_name}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Email</span>
-                    <span className="value">
-                      {selectedAppointment.patient_email}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Phone</span>
-                    <span className="value">
-                      {selectedAppointment.patient_phone}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="detail-section">
-                <h3>Appointment Details</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <span className="label">Date</span>
-                    <span className="value">
-                      {new Date(
-                        selectedAppointment.appointment_date
-                      ).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Time</span>
-                    <span className="value">
-                      {selectedAppointment.appointment_time}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Department</span>
-                    <span className="value">
-                      {selectedAppointment.department}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="detail-section">
-                <h3>Symptoms/Reason</h3>
-                <p className="symptoms-text">{selectedAppointment.symptoms}</p>
-              </div>
-
-              {selectedAppointment.status === "pending" && (
-                <div className="action-buttons">
-                  <button
-                    className="btn btn-approve-large"
-                    onClick={() =>
-                      updateStatus(selectedAppointment._id, "confirmed")
-                    }
-                  >
-                    Approve Appointment
-                  </button>
-
-                  <button
-                    className="btn btn-reject-large"
-                    onClick={() =>
-                      updateStatus(selectedAppointment._id, "cancelled")
-                    }
-                  >
-                    Reject Appointment
-                  </button>
-                </div>
-              )}
-
-              {selectedAppointment.status === "confirmed" && (
-                <div className="action-buttons">
-                  <button
-                    className="btn btn-video-large"
-                    onClick={() =>
-                      window.open("https://meet.google.com/new", "_blank")
-                    }
-                  >
-                    <Video size={18} />
-                    Join Video Consultation
-                  </button>
-
-                  <button className="btn btn-manage-large">
-                    Manage Meet Link
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="decorative-elements">
-        <div className="blob blob-1"></div>
-        <div className="blob blob-2"></div>
-        <div className="blob blob-3"></div>
       </div>
     </div>
   );

@@ -1,118 +1,124 @@
-import { useState } from 'react';
-import AppointmentBooking from './pages/user/AppointmentBooking';
-import BookingConfirmation from './pages/user/BookingConfirmation';
-import AppointmentList from './pages/user/AppointmentList';
-import DoctorDashboard from './pages/doctor/DoctorDashboard';
-import AppointmentManagement from './pages/doctor/AppointmentManagement';
-import VideoConsultation from './pages/doctor/VideoConsultation';
+import { useState } from "react";
+
+import UserLogin from "./pages/user/UserLogin";
+import DoctorLogin from "./pages/doctor/DoctorLogin";
+
+import AppointmentBooking from "./pages/user/AppointmentBooking";
+import BookingConfirmation from "./pages/user/BookingConfirmation";
+import AppointmentList from "./pages/user/AppointmentList";
+
+import DoctorDashboard from "./pages/doctor/DoctorDashboard";
+import AppointmentManagement from "./pages/doctor/AppointmentManagement";
+import VideoConsultation from "./pages/doctor/VideoConsultation";
 
 function App() {
-  const [userRole, setUserRole] = useState('patient');
-  const [currentPage, setCurrentPage] = useState('booking');
+  const [userRole, setUserRole] = useState(null);
+  const [currentPage, setCurrentPage] = useState("login");
+
   const [bookingData, setBookingData] = useState(null);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
 
-  const handleBookingSuccess = (data) => {
-    setBookingData(data);
-    setCurrentPage('confirmation');
+  // ===== LOGIN =====
+  const handleUserLogin = () => {
+    setUserRole("patient");
+    setCurrentPage("booking");
   };
 
-  const handleViewAppointments = () => {
-    setCurrentPage('list');
-  };
-
-  const handleBackToBooking = () => {
-    setCurrentPage('booking');
-  };
-
-  const handleSwitchRole = (role) => {
-    setUserRole(role);
-    setCurrentPage('dashboard');
+  const handleDoctorLogin = () => {
+    setUserRole("doctor");
+    setCurrentPage("dashboard");
   };
 
   const handleLogout = () => {
-    setUserRole('patient');
-    setCurrentPage('booking');
+    localStorage.clear();
+    setUserRole(null);
+    setCurrentPage("login");
   };
 
+  // ===== PATIENT =====
+  const handleBookingSuccess = (data) => {
+    setBookingData(data);
+    setCurrentPage("confirmation");
+  };
+
+  const handleViewAppointments = () => {
+    setCurrentPage("list");
+  };
+
+  const handleBackToBooking = () => {
+    setCurrentPage("booking");
+  };
+
+  // ===== DOCTOR =====
   const handleManageAppointment = (appointmentId) => {
     setSelectedAppointmentId(appointmentId);
-    setCurrentPage('management');
+    setCurrentPage("management");
   };
 
   const handleStartConsultation = (appointmentId) => {
     setSelectedAppointmentId(appointmentId);
-    setCurrentPage('consultation');
+    setCurrentPage("consultation");
   };
 
   const handleBackToDashboard = () => {
-    setCurrentPage('dashboard');
+    setCurrentPage("dashboard");
   };
 
   return (
     <div className="app-container">
-      {userRole === 'patient' ? (
+      {/* LOGIN */}
+      {currentPage === "login" && (
         <>
-          {currentPage === 'booking' && (
+          <UserLogin onLogin={handleUserLogin} />
+          <DoctorLogin onLogin={handleDoctorLogin} />
+        </>
+      )}
+
+      {/* PATIENT */}
+      {userRole === "patient" && (
+        <>
+          {currentPage === "booking" && (
             <AppointmentBooking
               onSuccess={handleBookingSuccess}
               onViewAppointments={handleViewAppointments}
             />
           )}
-          {currentPage === 'confirmation' && (
+
+          {currentPage === "confirmation" && (
             <BookingConfirmation
               bookingData={bookingData}
               onViewAppointments={handleViewAppointments}
               onBackToBooking={handleBackToBooking}
             />
           )}
-          {currentPage === 'list' && (
-            <AppointmentList
-              onBackToBooking={handleBackToBooking}
-            />
+
+          {currentPage === "list" && (
+            <AppointmentList onBackToBooking={handleBackToBooking} />
           )}
         </>
-      ) : (
+      )}
+
+      {/* DOCTOR */}
+      {userRole === "doctor" && (
         <>
-          {currentPage === 'dashboard' && (
-            <DoctorDashboard
-              onLogout={handleLogout}
-            />
+          {currentPage === "dashboard" && (
+            <DoctorDashboard onLogout={handleLogout} />
           )}
-          {currentPage === 'management' && (
+
+          {currentPage === "management" && (
             <AppointmentManagement
               appointmentId={selectedAppointmentId}
               onBack={handleBackToDashboard}
             />
           )}
-          {currentPage === 'consultation' && (
+
+          {currentPage === "consultation" && (
             <VideoConsultation
               appointmentId={selectedAppointmentId}
               onBack={handleBackToDashboard}
             />
           )}
         </>
-      )}
-
-      {userRole === 'patient' && (
-        <button
-          onClick={() => handleSwitchRole('doctor')}
-          style={{
-            position: 'fixed',
-            bottom: '2rem',
-            right: '2rem',
-            padding: '0.75rem 1.5rem',
-            background: '#2563EB',
-            color: 'white',
-            border: 'none',
-            borderRadius: '50px',
-            cursor: 'pointer',
-            fontWeight: '600',
-            zIndex: '999'
-          }}
-        >
-          👨‍⚕️ Doctor Login
-        </button>
       )}
     </div>
   );

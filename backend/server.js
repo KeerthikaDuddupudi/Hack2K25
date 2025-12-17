@@ -1,92 +1,72 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
+const http = require("http");
+const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
 const Appointment = require("./models/Appointment");
+const Doctor = require("./models/Doctor");
+const authRoutes = require("./routes/authRoutes");
+const auth = require("./middleware/auth");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
 connectDB();
 
 app.use(cors());
 app.use(express.json());
 
-// Health check
+/* AUTH ROUTES */
+app.use("/api/auth", authRoutes);
+
+/* SOCKET */
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+io.on("connection", (socket) => {
+  socket.on("join-doctor", (email) => socket.join(email));
+});
+
+app.set("io", io);
+
+/* HEALTH */
 app.get("/health", (req, res) => {
-  res.json({ status: "Server is running" });
+  res.json({ status: "Server running" });
 });
 
-// Create appointment (used by frontend booking form)
+/* CREATE APPOINTMENT */
 app.post("/api/appointments", async (req, res) => {
-  try {
-    const appointment = new Appointment(req.body);
-    const savedAppointment = await appointment.save();
-    res.status(201).json(savedAppointment);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+  const saved = await Appointment.create(req.body);
+
+  req.app
+    .get("io")
+    .to(req.body.doctor_email)
+    .emit("new-appointment", saved);
+
+  res.status(201).json(saved);
 });
 
-// Get all appointments
-app.get("/api/appointments", async (req, res) => {
-  try {
-    const appointments = await Appointment.find().sort({ appointment_date: 1 });
-    res.json(appointments);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+/* DOCTOR DASHBOARD */
+app.get("/api/doctor/appointments", auth("doctor"), async (req, res) => {
+  const doctor = await Doctor.findById(req.user.id);
+  const data = await Appointment.find({
+    doctor_email: doctor.email,
+  }).sort({ createdAt: -1 });
+
+  res.json(data);
 });
 
-// Get appointment by ID
-app.get("/api/appointments/:id", async (req, res) => {
-  try {
-    const appointment = await Appointment.findById(req.params.id);
-    res.json(appointment);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Update appointment status
+/* UPDATE STATUS */
 app.put("/api/appointments/:id/status", async (req, res) => {
-  try {
-    const updated = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { status: req.body.status },
-      { new: true }
-    );
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+  const updated = await Appointment.findByIdAndUpdate(
+    req.params.id,
+    { status: req.body.status },
+    { new: true }
+  );
+  res.json(updated);
 });
 
-// Update meet link
-app.put("/api/appointments/:id/meet-link", async (req, res) => {
-  try {
-    const updated = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { meet_link: req.body.meet_link },
-      { new: true }
-    );
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Delete appointment
-app.delete("/api/appointments/:id", async (req, res) => {
-  try {
-    await Appointment.findByIdAndDelete(req.params.id);
-    res.json({ message: "Appointment deleted" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on port ${PORT}`)
+);
