@@ -1,8 +1,20 @@
 {
   "name": "vite-react-typescript-starter",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
+  "description": "Frontend for Hack2K25 project",
+  "homepage": "https://github.com/KeerthikaDuddupudi/Hack2K25#readme",
+  "bugs": {
+    "url": "https://github.com/KeerthikaDuddupudi/Hack2K25/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KeerthikaDuddupudi/Hack2K25.git"
+  },
+  "license": "ISC",
+  "author": "",
   "type": "module",
+  "main": "eslint.config.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
